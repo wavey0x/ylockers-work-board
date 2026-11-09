@@ -118,7 +118,7 @@ function Column({ status, items }) {
     <div className="cards">{items.slice(0, limit).map((item, index) => <Card item={item} index={index} key={item.id}/>)}
       {!items.length && <div className="empty-column"><Circle size={18}/><span>Nothing here for now</span></div>}
     </div>
-    {status === 'Done' && items.length > 6 && <button className="show-more" onClick={() => setExpanded(!expanded)}>{expanded ? 'Show less' : `Show all ${items.length} completed items`}<ChevronDown size={14} className={expanded ? 'rotate' : ''}/></button>}
+    {status === 'Done' && items.length > 6 && <button className={`show-more ${expanded ? 'expanded' : ''}`} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? <span>Show less</span> : <><span className="more-count">+{items.length - limit}</span><span>more completed</span></>}<ChevronDown size={14} className={expanded ? 'rotate' : ''}/></button>}
   </section>;
 }
 function App() {
