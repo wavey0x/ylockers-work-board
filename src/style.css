@@ -143,6 +143,7 @@ main{padding:8px 28px 40px;flex:1}
 .avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
 .owner-names{font-size:11px;color:var(--muted);white-space:nowrap}
 .unassigned{color:var(--faint);font-size:11px}
+.avatar-empty{background:none;border:1px dashed var(--border-strong);width:18px;height:18px;margin-left:0}
 .show-more{position:relative;width:100%;display:flex;justify-content:center;align-items:center;gap:8px;margin:10px 0 14px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:linear-gradient(var(--card-top),var(--card-bottom));color:var(--text-2);font-size:12px;font-weight:500;box-shadow:var(--lift),var(--gloss),0 5px 0 -2px var(--surface),0 5px 0 -1px var(--border),0 10px 0 -4px var(--surface),0 10px 0 -3px var(--border-soft);transition:border-color .2s,color .2s,transform .2s}
 .show-more:hover{border-color:var(--border-strong);color:var(--text);transform:translateY(-1px)}
 .more-count{--tone:var(--muted);font-size:11px;font-weight:500;padding:1px 7px;border-radius:10px;background:color-mix(in srgb,var(--tone) 16%,transparent);color:var(--tone);font-variant-numeric:tabular-nums}
@@ -219,6 +220,19 @@ main{padding:6px 16px 24px}
 .work-card{padding:16px}
 .display-options{right:0;top:37px}
 .board .column:last-child{margin-right:1px}
+}
+
+@media(max-width:560px){.brand-sep,.brand-sub,.freshness-prefix{display:none}
+.list-container table,.list-container tbody{display:block;min-width:0}
+.list-container thead{display:none}
+.list-container tr{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:10px 12px;padding:14px 16px;border-top:1px solid var(--border-soft)}
+.list-container tr:first-child{border-top:0}
+.list-container td{display:block;padding:0;border:0;width:auto}
+.list-container .cell-title{grid-column:1 / -1;font-size:13.5px}
+.list-container .cell-area{grid-row:2}
+.list-container .cell-owners{grid-row:2}
+.list-container .owner-names,.list-container .unassigned{display:none}
+.list-container .cell-status{grid-row:2;justify-self:end}
 }
 
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}
