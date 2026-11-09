@@ -1,0 +1,16 @@
+node_modules
+dist
+.env
+.env.*
+data
+artifacts
+seed
+backups
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite*
+*.db
+*.log
+.git
