@@ -1,0 +1,20 @@
+[Unit]
+Description=Notify Telegram of a failed yLockers board update
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+User=ylockers-board
+Group=ylockers-board
+EnvironmentFile=/etc/ylockers-work-board-alerts.env
+ExecStart=/usr/bin/python3 /opt/ylockers-work-board/scripts/notify_failure.py %i
+Restart=on-failure
+RestartSec=60s
+TimeoutStartSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+UMask=0077

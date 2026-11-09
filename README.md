@@ -4,7 +4,7 @@ A static, read-only public view of the private yLockers team board. The team upd
 
 ## Local development
 
-Requires Node 24 or newer.
+Requires Node 24 or newer. Python 3 runs the failure notifier and its tests.
 
 ```sh
 npm ci
@@ -43,6 +43,7 @@ The supplied Caddy site serves `ylockers-work-board.wavey.info`. Point that host
 | `/var/www/ylockers-work-board/` | Built frontend only |
 | `/var/lib/ylockers-work-board/board.json` | Public, filtered snapshot |
 | `/etc/ylockers-work-board.env` | GitHub credential; root-owned, mode `0600` |
+| `/etc/ylockers-work-board-alerts.env` | Telegram bot credential and alert chat ID; root-owned, mode `0600` |
 
 Build with `npm ci && npm run build`. Copy `dist/` into the web directory, and the `scripts/` and `sync/` directories into `/opt/ylockers-work-board/`. The sync job uses only Node built-ins; no runtime dependency installation is needed.
 
@@ -58,7 +59,7 @@ sudoedit /etc/ylockers-work-board.env
 Set the credential in that file. The systemd service sets the production output path independently of the environment file. Install the units and run a first sync:
 
 ```sh
-sudo install -m 0644 deploy/ylockers-work-board.service deploy/ylockers-work-board.timer /etc/systemd/system/
+sudo install -m 0644 deploy/ylockers-work-board.service deploy/ylockers-work-board.timer deploy/ylockers-work-board-alert@.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl start ylockers-work-board.service
 sudo systemctl enable --now ylockers-work-board.timer
@@ -77,6 +78,20 @@ sudo journalctl -u ylockers-work-board.service --since today
 ```
 
 Manual starts are a server maintenance command; there is no public sync API. Service logs contain counts, timestamps and generic failures, never task titles or credentials. Data survives frontend updates because it lives outside the web directory. Back up the data and credential file privately.
+
+### Failure alerts
+
+Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `/etc/ylockers-work-board-alerts.env`, using `deploy/alerts.env.example` as the template. The bot must already be in the intended alert group. Keep the file root-owned with mode `0600`; install `scripts/notify_failure.py` alongside the sync command.
+
+The sync service's `OnFailure=` hook starts a separate notification service after errors, crashes or timeouts. The notification contains only the app name, a generic failure category and the public link. It includes no task contents, source errors or journal excerpts. Failed Telegram delivery retries every minute until accepted; successful updates send nothing. As with other HTTP notifications, a lost acknowledgement can result in a duplicate retry.
+
+To verify the hook with a clearly labelled test notification, run:
+
+```sh
+sudo systemd-run --unit=ylockers-work-board-alert-test --property=OnFailure=ylockers-work-board-alert@ylockers-work-board-alert-test.service.service /usr/bin/false
+```
+
+The test unit intentionally fails without touching board data. Confirm the test message in the intended group, then reset the test unit's failed state.
 
 ## Verification and repository privacy
 

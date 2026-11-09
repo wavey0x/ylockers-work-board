@@ -2,6 +2,7 @@
 Description=Publish the filtered yLockers work board
 Wants=network-online.target
 After=network-online.target
+OnFailure=ylockers-work-board-alert@%n.service
 
 [Service]
 Type=oneshot
