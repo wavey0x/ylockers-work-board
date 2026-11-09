@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Check, ChevronDown, Circle, Columns3, Filter, List, Moon, RefreshCw, Search, SlidersHorizontal, Sun, X } from 'lucide-react';
+import { Check, ChevronDown, Circle, Columns3, Filter, List, Moon, Search, SlidersHorizontal, Sun, X } from 'lucide-react';
 import { Select } from './Select.jsx';
 import './style.css';
 
@@ -88,18 +88,30 @@ function Owners({ names, compact = false }) {
     <span className="owner-names">{names.map(displayName).join(', ')}</span>
   </div>;
 }
-function Card({ item }) {
-  return <article className={`work-card ${item.status === 'Done' ? 'completed-card' : ''}`}>
+function Card({ item, index = 0 }) {
+  return <article className={`work-card ${item.status === 'Done' ? 'completed-card' : ''}`} style={{ '--i': Math.min(index, 8) }}>
     <h3>{item.title}</h3>
     <div className="card-meta"><ProjectTag name={item.project}/><Owners names={item.assignees} compact/></div>
   </article>;
+}
+// Placeholder columns shown until the first snapshot arrives.
+function BoardSkeleton() {
+  return <div className="board skeleton" style={{ '--column-count': 3 }} aria-busy="true" aria-label="Loading work">
+    {[4, 3, 5].map((count, column) => <div className="column" key={column}>
+      <div className="column-header"><div><span className="shimmer" style={{ width: 70, height: 10 }}/></div></div>
+      <div className="cards">{Array.from({ length: count }, (_, card) => <div className="work-card skeleton-card" key={card}>
+        <div><span className="shimmer" style={{ width: `${[78, 62, 88, 55, 70][(card + column) % 5]}%` }}/><span className="shimmer" style={{ width: `${[40, 52, 30, 46, 36][(card + column * 2) % 5]}%` }}/></div>
+        <div className="card-meta"><span className="shimmer" style={{ width: 58, height: 16 }}/><span className="shimmer round" style={{ width: 20, height: 20 }}/></div>
+      </div>)}</div>
+    </div>)}
+  </div>;
 }
 function Column({ status, items }) {
   const [expanded, setExpanded] = useState(false);
   const limit = status === 'Done' && !expanded ? 6 : items.length;
   return <section className={`column column-${slug(status)}`} aria-label={`${status}, ${items.length} items`}>
     <div className="column-header"><div><span className={`status-dot status-${slug(status)}`}/><h2>{status}</h2><span className="column-count">{items.length}</span></div>{status === 'Done' && <Check size={14}/>}</div>
-    <div className="cards">{items.slice(0, limit).map(item => <Card item={item} key={item.id}/>)}
+    <div className="cards">{items.slice(0, limit).map((item, index) => <Card item={item} index={index} key={item.id}/>)}
       {!items.length && <div className="empty-column"><Circle size={18}/><span>Nothing here for now</span></div>}
     </div>
     {status === 'Done' && items.length > 6 && <button className="show-more" onClick={() => setExpanded(!expanded)}>{expanded ? 'Show less' : `Show all ${items.length} completed items`}<ChevronDown size={14} className={expanded ? 'rotate' : ''}/></button>}
@@ -155,13 +167,13 @@ function App() {
   const activeFilter = Boolean(search || owner !== 'all' || project !== 'all' || status !== 'all');
   function reset() { setSearch(''); setOwner('all'); setProject('all'); setStatus('all'); }
   return <div className="app-shell">
-    <header className="site-header"><a href="/" className="brand" aria-label="yLockers work board">yLockers</a><span className="header-label">Work board</span><div className="header-actions"><ThemeToggle/></div></header>
+    <header className="site-header"><a href="/" className="brand" aria-label="yLockers work board">yLockers</a><span className="header-label">Work board</span><div className="header-actions">{board && <span className={`freshness ${!board.syncedAt || stale ? 'muted' : ''}`} title={board.syncedAt ? dateLabel(board.syncedAt, true) : undefined}><span className="live-dot"/>{board.syncedAt ? <span>{stale ? 'Update delayed · ' : ''}Updated {relativeLabel(board.syncedAt, now)}</span> : <span>Not synced yet</span>}</span>}<ThemeToggle/></div></header>
     <main>
       <h1 className="sr-only">yLockers work board</h1>
       <div className="toolbar"><div className="view-toggle" aria-label="Display layout"><button className={view === 'board' ? 'selected' : ''} aria-pressed={view === 'board'} onClick={() => setView('board')}><Columns3 size={15}/>Board</button><button className={view === 'list' ? 'selected' : ''} aria-pressed={view === 'list'} onClick={() => setView('list')}><List size={16}/>List</button></div><div className="filters"><label className="search-box"><Search size={15}/><input ref={searchRef} aria-label="Search work" placeholder="Search work…" value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { if (search) setSearch(''); else event.currentTarget.blur(); } }}/>{search ? <button aria-label="Clear search" onClick={() => setSearch('')}><X size={13}/></button> : <kbd>/</kbd>}</label><Select label="Assignee" className={owner !== 'all' ? 'active' : ''} value={owner} onChange={setOwner} options={[{ value: 'all', label: 'Everyone' }, ...owners.map(o => ({ value: o, label: displayName(o) })), ...(items.some(i => !i.assignees.length) ? [{ value: 'unassigned', label: 'Unassigned' }] : [])]}/><Select label="Project" className={`project-filter ${project !== 'all' ? 'active' : ''}`} value={project} onChange={setProject} options={[{ value: 'all', label: 'All projects' }, ...projects.map(p => ({ value: p, label: p })), ...(items.some(i => !i.project) ? [{ value: 'none', label: 'No project' }] : [])]}/><div className="settings-wrap" ref={settingsRef}><button className={`icon-button display-button ${settings ? 'selected' : ''} ${status !== 'all' || showEmpty ? 'active' : ''}`} aria-label="Display options" aria-expanded={settings} onClick={() => setSettings(!settings)}><SlidersHorizontal size={16}/></button>{settings && <div className="display-options"><label><input type="checkbox" checked={showEmpty} onChange={e => setShowEmpty(e.target.checked)}/>Show empty columns</label><div className="status-select"><span>Status</span><Select label="Status" align="right" value={status} onChange={setStatus} options={[{ value: 'all', label: 'All statuses' }, ...statuses.map(s => ({ value: s, label: s }))]}/></div></div>}</div></div></div>
-      <div className="board-caption"><div>{activeFilter ? <><Filter size={12}/><span>{filtered.length} of {items.length} items</span><button onClick={reset}>Clear filters<X size={11}/></button></> : <><span className={`caption-dot ${!board?.syncedAt || stale ? 'muted' : ''}`}/><span title={board?.syncedAt ? dateLabel(board.syncedAt, true) : undefined}>{board?.syncedAt ? `Updated ${relativeLabel(board.syncedAt, now)}` : board ? 'Not synced yet' : 'Loading board…'}</span>{stale && <span className="stale-label">Update delayed</span>}</>}</div><span>{board?.syncedAt ? 'Updates hourly' : ''}</span></div>
+      <div className={`board-caption ${activeFilter ? '' : 'empty'}`}>{activeFilter && <div><Filter size={12}/><span>{filtered.length} of {items.length} items</span><button onClick={reset}>Clear filters<X size={11}/></button></div>}</div>
       {error && <div className="load-error" role="alert">{error}<button onClick={refresh}>Try again</button></div>}
-      {!board && !error && <div className="loading-state"><RefreshCw className="spinning" size={18}/>Loading work…</div>}
+      {!board && !error && <BoardSkeleton/>}
       {board && !items.length && <div className="no-results"><h2>No work published yet</h2><p>{board.syncedAt ? 'No public items are currently available.' : 'The board will appear after its first sync.'}</p></div>}
       {board && items.length > 0 && !filtered.length && <div className="no-results"><Search size={25}/><h2>No matching work</h2><p>Try a different search or clear your filters.</p><button className="outline-button" onClick={reset}>Clear filters</button></div>}
       {board && filtered.length > 0 && (view === 'board' ? <div className="board" style={{ '--column-count': columns.length }}>{columns.map(s => <Column key={s} status={s} items={filtered.filter(item => item.status === s)}/>)}</div> : <div className="list-container"><table><thead><tr><th>Work</th><th>Project</th><th>Assigned to</th><th>Status</th></tr></thead><tbody>{[...filtered].sort((a, b) => statuses.indexOf(a.status) - statuses.indexOf(b.status)).map(item => <tr key={item.id} className={item.status === 'Done' ? 'completed-row' : ''}><td>{item.title}</td><td><ProjectTag name={item.project}/></td><td><Owners names={item.assignees}/></td><td><span className="table-status"><span className={`status-dot status-${slug(item.status)}`}/>{item.status}</span></td></tr>)}</tbody></table></div>)}
