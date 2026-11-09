@@ -78,6 +78,8 @@ sudo systemctl enable --now ylockers-work-board.timer
 
 Never serve the source checkout or the whole data directory. JSON responses use `Cache-Control: no-store`. Electro hosts only the public snapshot for this app; the frontend and its custom hostname are served by Vercel.
 
+During the DNS transition, `deploy/Caddy-transition.caddy` can temporarily forward clients still using Electro's cached IP to Vercel. It stores no frontend files and uses Vercel's DNS target directly, with the public hostname for HTTP and verified TLS, to avoid a proxy loop. Remove its import after old DNS caches have expired; retain the separate data route.
+
 The timer runs hourly and catches up after downtime. Systemd prevents overlapping runs of the same service. Failed attempts leave the old snapshot in place and try again at the next scheduled hour. Read the [systemd timer documentation](https://www.freedesktop.org/software/systemd/man/latest/systemd.timer.html) and [Caddy static-file documentation](https://caddyserver.com/docs/caddyfile/directives/file_server) for host configuration details.
 
 For maintenance:

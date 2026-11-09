@@ -1,0 +1,11 @@
+# Temporary compatibility for clients that cached Electro's IP before the
+# Vercel cutover. No frontend files are stored or served on Electro.
+# Remove this site's import after old DNS caches have expired.
+ylockers-work-board.wavey.info {
+	reverse_proxy https://1e61ac229e276499.vercel-dns-017.com {
+		header_up Host ylockers-work-board.wavey.info
+		transport http {
+			tls_server_name ylockers-work-board.wavey.info
+		}
+	}
+}
