@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Check, ChevronDown, Circle, Columns3, Filter, List, Moon, Search, SlidersHorizontal, Sun, X } from 'lucide-react';
 import { Select } from './Select.jsx';
@@ -12,6 +12,20 @@ const avatarUrls = {
   dudesahn: 'https://avatars.githubusercontent.com/u/23222916?v=4&s=48',
   wavey0x: 'https://avatars.githubusercontent.com/u/82397455?v=4&s=48',
 };
+// Lets tags and avatars anywhere on the board toggle the matching filter.
+const Filters = createContext(null);
+function Highlight({ text }) {
+  const query = useContext(Filters)?.search.trim();
+  if (!query) return text;
+  const lower = text.toLowerCase(), needle = query.toLowerCase(), parts = [];
+  let at = 0;
+  for (let found; (found = lower.indexOf(needle, at)) !== -1; at = found + needle.length) {
+    parts.push(text.slice(at, found), <mark key={found}>{text.slice(found, found + needle.length)}</mark>);
+  }
+  if (!parts.length) return text;
+  parts.push(text.slice(at));
+  return parts;
+}
 function Avatar({ name }) {
   const [failed, setFailed] = useState(false);
   return <span className={`avatar avatar-${name}`}>{avatarUrls[name] && !failed ? <img src={avatarUrls[name]} alt="" referrerPolicy="no-referrer" onError={() => setFailed(true)}/> : initials(name)}</span>;
@@ -59,7 +73,23 @@ function ThemeToggle() {
 function Mark() {
   return <svg className="mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" className="mark-tile"/><rect x="7.5" y="8" width="4.5" height="11" rx="2.25" className="mark-bar" opacity=".45"/><rect x="13.75" y="8" width="4.5" height="16" rx="2.25" className="mark-bar" opacity=".9"/><rect x="20" y="8" width="4.5" height="7" rx="2.25" className="mark-done"/></svg>;
 }
-function ProjectTag({ name }) { return name ? <span className={`project-tag project-${slug(name)}`}><span />{name}</span> : null; }
+function ProjectTag({ name }) {
+  const filters = useContext(Filters);
+  if (!name) return null;
+  const active = filters?.project === name;
+  return <button type="button" className={`project-tag project-${slug(name)} ${active ? 'active' : ''}`} aria-pressed={active}
+    title={active ? 'Show all areas' : `Show only ${name}`} onClick={() => filters?.toggleProject(name)}><span/>{name}</button>;
+}
+function AvatarButton({ name }) {
+  const filters = useContext(Filters);
+  const value = name ?? 'unassigned';
+  const label = name ? displayName(name) : 'unassigned work';
+  const active = filters?.owner === value;
+  return <button type="button" className={`avatar-button ${active ? 'active' : ''}`} aria-pressed={active}
+    aria-label={active ? 'Show everyone' : `Show only ${name ? `${label}'s work` : label}`} onClick={() => filters?.toggleOwner(value)}>
+    {name ? <Avatar name={name}/> : <span className="avatar avatar-empty"/>}
+  </button>;
+}
 function CompactOwners({ names }) {
   const [open, setOpen] = useState(false);
   const container = useRef(null);
@@ -75,12 +105,10 @@ function CompactOwners({ names }) {
     onPointerEnter={event => { if (event.pointerType === 'mouse') setOpen(true); }}
     onPointerLeave={event => { if (event.pointerType === 'mouse') setOpen(false); }}
     onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
-    <button className="owner-trigger" aria-label={names.length ? `Assigned to ${label}` : label}
-      aria-describedby={open ? tooltipId : undefined}
-      onFocus={() => setOpen(true)} onClick={() => setOpen(true)}
+    <span className="owner-trigger" aria-describedby={open ? tooltipId : undefined} onFocus={() => setOpen(true)}
       onKeyDown={event => { if (event.key === 'Escape') { setOpen(false); event.stopPropagation(); } }}>
-      {names.length ? <span className="avatars">{names.map(name => <Avatar name={name} key={name}/>)}</span> : <span className="avatar avatar-empty"/>}
-    </button>
+      <span className="avatars">{names.length ? names.map(name => <AvatarButton name={name} key={name}/>) : <AvatarButton/>}</span>
+    </span>
     {open && <span id={tooltipId} className="owner-tooltip" role="tooltip">{label}</span>}
   </div>;
 }
@@ -88,13 +116,13 @@ function Owners({ names, compact = false }) {
   if (compact) return <CompactOwners names={names}/>;
   if (!names.length) return <span className="unassigned">Unassigned</span>;
   return <div className="owners" aria-label={`Assigned to ${names.map(displayName).join(', ')}`}>
-    <div className="avatars">{names.map(name => <Avatar name={name} key={name}/>)}</div>
+    <div className="avatars">{names.map(name => <AvatarButton name={name} key={name}/>)}</div>
     <span className="owner-names">{names.map(displayName).join(', ')}</span>
   </div>;
 }
 function Card({ item, index = 0 }) {
   return <article className={`work-card ${item.status === 'Done' ? 'completed-card' : ''}`} style={{ '--i': Math.min(index, 8) }}>
-    <h3>{item.title}</h3>
+    <h3><Highlight text={item.title}/></h3>
     <div className="card-meta"><ProjectTag name={item.project}/><Owners names={item.assignees} compact/></div>
   </article>;
 }
@@ -124,6 +152,29 @@ function Column({ status, items }) {
     {collapsible && <button className={`show-more ${expanded ? 'expanded' : ''}`} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? <span>Show less</span> : <><span className="more-count">+{items.length - limit}</span><span>{status === 'Done' ? 'more completed' : 'more'}</span></>}<ChevronDown size={14} className={expanded ? 'rotate' : ''}/></button>}
   </section>;
 }
+// Phone-only status pills that jump to each column of the swipeable board.
+function ColumnTabs({ columns, counts, boardRef }) {
+  const [active, setActive] = useState(0);
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) return;
+    const track = () => {
+      const width = board.querySelector('.column')?.offsetWidth || 1;
+      setActive(Math.min(columns.length - 1, Math.round(board.scrollLeft / (width + 16))));
+    };
+    board.addEventListener('scroll', track, { passive: true });
+    return () => board.removeEventListener('scroll', track);
+  }, [boardRef, columns.length]);
+  function jump(index) {
+    const column = boardRef.current?.querySelectorAll('.column')[index];
+    boardRef.current?.scrollTo({ left: column ? column.offsetLeft - boardRef.current.offsetLeft : 0, behavior: 'smooth' });
+    setActive(index);
+  }
+  return <nav className="column-tabs" aria-label="Jump to column">{columns.map((status, index) =>
+    <button key={status} className={index === active ? 'selected' : ''} aria-current={index === active} onClick={() => jump(index)}>
+      <span className={`status-dot status-${slug(status)}`}/>{status}<span className="tab-count">{counts[status] ?? 0}</span>
+    </button>)}</nav>;
+}
 function App() {
   const [board, setBoard] = useState(null);
   const [error, setError] = useState('');
@@ -137,6 +188,7 @@ function App() {
   const [now, setNow] = useState(Date.now);
   const searchRef = useRef(null);
   const settingsRef = useRef(null);
+  const boardRef = useRef(null);
   async function refresh() {
     try {
       const response = await fetch('/board.json', { cache: 'no-store' });
@@ -173,7 +225,8 @@ function App() {
   const columns = statuses.filter(s => status === 'all' ? showEmpty || ['Backlog', 'In Progress', 'Done'].includes(s) || filtered.some(item => item.status === s) : s === status);
   const activeFilter = Boolean(search || owner !== 'all' || project !== 'all' || status !== 'all');
   function reset() { setSearch(''); setOwner('all'); setProject('all'); setStatus('all'); }
-  return <div className="app-shell">
+  const filterActions = { owner, project, search, toggleOwner: value => setOwner(current => current === value ? 'all' : value), toggleProject: value => setProject(current => current === value ? 'all' : value) };
+  return <Filters.Provider value={filterActions}><div className="app-shell">
     <header className="site-header"><a href="/" className="brand" aria-label="yLockers work board"><Mark/><span className="brand-name">yLockers</span><span className="brand-sep" aria-hidden="true"/><span className="brand-sub">Work board</span></a><div className="header-actions">{board && <span className={`freshness ${!board.syncedAt || stale ? 'muted' : ''}`} title={board.syncedAt ? `${stale ? 'Update delayed. Last synced ' : ''}${dateLabel(board.syncedAt, true)}` : undefined}><span className="live-dot"/>{board.syncedAt ? <span><span className="freshness-prefix">Updated </span>{relativeLabel(board.syncedAt, now)}</span> : <span>Not synced yet</span>}</span>}<ThemeToggle/></div></header>
     <main>
       <h1 className="sr-only">yLockers work board</h1>
@@ -183,8 +236,8 @@ function App() {
       {!board && !error && <BoardSkeleton/>}
       {board && !items.length && <div className="no-results"><h2>No work published yet</h2><p>{board.syncedAt ? 'No public items are currently available.' : 'The board will appear after its first sync.'}</p></div>}
       {board && items.length > 0 && !filtered.length && <div className="no-results"><Search size={25}/><h2>No matching work</h2><p>Try a different search or clear your filters.</p><button className="outline-button" onClick={reset}>Clear filters</button></div>}
-      {board && filtered.length > 0 && (view === 'board' ? <div className="board" style={{ '--column-count': columns.length }}>{columns.map(s => <Column key={s} status={s} items={filtered.filter(item => item.status === s)}/>)}</div> : <div className="list-container"><table><thead><tr><th>Work</th><th>Area</th><th>Assigned to</th><th>Status</th></tr></thead><tbody>{[...filtered].sort((a, b) => statuses.indexOf(a.status) - statuses.indexOf(b.status)).map(item => <tr key={item.id} className={item.status === 'Done' ? 'completed-row' : ''}><td className="cell-title">{item.title}</td><td className="cell-area"><ProjectTag name={item.project}/></td><td className="cell-owners"><Owners names={item.assignees}/></td><td className="cell-status"><span className="table-status"><span className={`status-dot status-${slug(item.status)}`}/>{item.status}</span></td></tr>)}</tbody></table></div>)}
+      {board && filtered.length > 0 && (view === 'board' ? <><ColumnTabs columns={columns} counts={Object.fromEntries(columns.map(c => [c, filtered.filter(item => item.status === c).length]))} boardRef={boardRef}/><div ref={boardRef} className="board" style={{ '--column-count': columns.length }}>{columns.map(s => <Column key={s} status={s} items={filtered.filter(item => item.status === s)}/>)}</div></> : <div className="list-container"><table><thead><tr><th>Work</th><th>Area</th><th>Assigned to</th><th>Status</th></tr></thead><tbody>{[...filtered].sort((a, b) => statuses.indexOf(a.status) - statuses.indexOf(b.status)).map(item => <tr key={item.id} className={item.status === 'Done' ? 'completed-row' : ''}><td className="cell-title"><Highlight text={item.title}/></td><td className="cell-area"><ProjectTag name={item.project}/></td><td className="cell-owners"><Owners names={item.assignees}/></td><td className="cell-status"><span className="table-status"><span className={`status-dot status-${slug(item.status)}`}/>{item.status}</span></td></tr>)}</tbody></table></div>)}
     </main>
-  </div>;
+  </div></Filters.Provider>;
 }
 createRoot(document.getElementById('root')).render(<App/>);

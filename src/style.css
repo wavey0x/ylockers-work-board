@@ -108,6 +108,7 @@ main{padding:8px 28px 40px;flex:1}
 .board{display:grid;grid-template-columns:repeat(var(--column-count),minmax(255px,1fr));gap:27px;overflow-x:auto;padding-bottom:4px;animation:fade .2s ease-out}
 @keyframes fade{from{opacity:0}}
 .column{min-width:0}
+.column-tabs{display:none}
 .column-header{display:flex;align-items:center;justify-content:space-between;padding:0 3px 14px;border-bottom:1px solid var(--border);margin-bottom:16px;color:var(--muted)}
 .column-header>div{display:flex;align-items:center;gap:8px}
 .column-header h2{font-size:12px;color:var(--text);font-weight:550;margin:0}
@@ -127,6 +128,16 @@ main{padding:8px 28px 40px;flex:1}
 .card-meta{display:flex;align-items:center;gap:9px;justify-content:space-between;min-height:24px}
 .project-tag{--tag:var(--muted);display:inline-flex;align-items:center;gap:5px;padding:3px 7px;border:1px solid color-mix(in srgb,var(--tag) 24%,transparent);background:color-mix(in srgb,var(--tag) 7%,transparent);border-radius:4px;font-size:10.5px;white-space:nowrap;color:var(--tag);line-height:13px}
 .project-tag>span{width:4px;height:4px;background:currentColor;border-radius:1px}
+button.project-tag{font-family:inherit;cursor:pointer;transition:background .15s,border-color .15s}
+button.project-tag:hover{border-color:color-mix(in srgb,var(--tag) 50%,transparent);background:color-mix(in srgb,var(--tag) 13%,transparent)}
+button.project-tag.active{border-color:var(--tag);background:color-mix(in srgb,var(--tag) 16%,transparent)}
+.avatar-button{display:flex;padding:0;border-radius:50%;margin-left:-3px;transition:transform .15s}
+.avatar-button:first-child{margin-left:0}
+.avatar-button .avatar{margin-left:0}
+.avatar-button:hover{transform:translateY(-1px)}
+.avatar-button:hover .avatar,.avatar-button.active .avatar{box-shadow:0 0 0 1.5px var(--text-2)}
+.avatar-button:focus-visible{outline-offset:1px}
+mark{background:color-mix(in srgb,var(--progress) 32%,transparent);color:inherit;border-radius:3px;padding:0 1px;margin:0 -1px}
 .project-yfactory{--tag:var(--tag-yfactory)}
 .project-ycrv{--tag:var(--tag-ycrv)}
 .project-yyb{--tag:var(--tag-yyb)}
@@ -200,7 +211,14 @@ main{padding:8px 24px 32px}
 .toolbar{flex-wrap:wrap}
 }
 
-@media(max-width:720px){.site-header{height:48px;padding:0 12px 0 16px;gap:12px}
+@media(max-width:720px){.column-tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 -16px 12px;padding:8px 16px;position:sticky;top:48px;z-index:10;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.column-tabs::-webkit-scrollbar{display:none}
+.column-tabs button{display:flex;align-items:center;gap:7px;flex-shrink:0;padding:6px 11px;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-size:12px;color:var(--text-2);white-space:nowrap;transition:background .15s,border-color .15s,color .15s}
+.column-tabs button.selected{border-color:var(--border-strong);color:var(--text);box-shadow:var(--lift),var(--gloss)}
+.column-tabs .status-dot{width:7px;height:7px}
+.tab-count{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.board .column-header{display:none}
+.site-header{height:48px;padding:0 12px 0 16px;gap:12px}
 .brand{font-size:13px;gap:8px}
 .mark{width:20px;height:20px}
 main{padding:6px 16px 24px}
