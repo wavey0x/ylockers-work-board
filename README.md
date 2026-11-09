@@ -52,7 +52,6 @@ Import `deploy/Caddy-data.caddy` **inside** the existing `api.wavey.info` Caddy 
 | Location | Purpose |
 | --- | --- |
 | `/opt/ylockers-work-board/scripts/` and `sync/` | Sync code; not web-accessible |
-| `/var/www/ylockers-work-board/` | Previous static frontend, retained during the DNS transition |
 | `/var/lib/ylockers-work-board/board.json` | Public, filtered snapshot |
 | `/etc/ylockers-work-board.env` | GitHub credential; root-owned, mode `0600` |
 | `/etc/ylockers-work-board-alerts.env` | Telegram bot credential and alert chat ID; root-owned, mode `0600` |
@@ -77,7 +76,7 @@ sudo systemctl start ylockers-work-board.service
 sudo systemctl enable --now ylockers-work-board.timer
 ```
 
-Never serve the source checkout or the whole data directory. JSON responses use `Cache-Control: no-store`. The previous `deploy/Caddyfile` is available for an all-Electro fallback: build the frontend locally, copy `dist/` into `/var/www/ylockers-work-board/`, import that site block and point the board hostname back at Electro.
+Never serve the source checkout or the whole data directory. JSON responses use `Cache-Control: no-store`. Electro hosts only the public snapshot for this app; the frontend and its custom hostname are served by Vercel.
 
 The timer runs hourly and catches up after downtime. Systemd prevents overlapping runs of the same service. Failed attempts leave the old snapshot in place and try again at the next scheduled hour. Read the [systemd timer documentation](https://www.freedesktop.org/software/systemd/man/latest/systemd.timer.html) and [Caddy static-file documentation](https://caddyserver.com/docs/caddyfile/directives/file_server) for host configuration details.
 
