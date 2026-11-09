@@ -1,11 +1,11 @@
 :root{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-synthesis:none;font-weight:400;font-size:14px;-webkit-font-smoothing:antialiased;color-scheme:light;
   --bg:#fafafa;--surface:#fff;--surface-soft:#ffffff85;--hover:#f2f2f2;--selected:#ececec;--inset:#f7f7f7;
-  --ink:#252525;--text:#343434;--text-2:#5c5c5c;--muted:#828282;--faint:#a5a5a5;
+  --ink:#171717;--text:#1f1f1f;--text-2:#474747;--muted:#6b6b6b;--faint:#999;
   --border:#e4e4e4;--border-soft:#efefef;--border-strong:#c6c6c6;--focus:#606c63;
   --shadow:0 8px 24px #0000000d;--backdrop:#00000040;
   --primary:#292929;--primary-text:#fff;
   --warn:#9c7c43;--error-bg:#faf2eb;--error-border:#ecdccf;--error-text:#9a775f;--success-bg:#eaf1e4;--success-text:#657e52;
-  --tag-yfactory:#6f8263;--tag-ycrv:#6c8199;--tag-yyb:#977f52;--tag-resupply:#83799d;--tag-tools:#5e8a85;--tag-operations:#8a7466;
+  --tag-yfactory:#56694b;--tag-ycrv:#526781;--tag-yyb:#7a6338;--tag-resupply:#675d82;--tag-tools:#466f6a;--tag-operations:#6e584b;
   --blocked:#bd8f84;--ready:#8fa5c2;--progress:#c39d5c;
   --live:#5f9a5a;--card-top:#fff;--card-bottom:#fdfdfd;--gloss:inset 0 1px 0 #ffffff;
   --lift:0 1px 2px #1010100a,0 1px 1px #10101005;--lift-hover:0 10px 22px -10px #1010102e,0 2px 5px #1010100d;
@@ -13,7 +13,7 @@
   color:var(--ink);background:var(--bg)}
 :root[data-theme=dark]{color-scheme:dark;
   --bg:#111212;--surface:#18191a;--surface-soft:#161718;--hover:#1f2021;--selected:#262728;--inset:#151617;
-  --ink:#ececec;--text:#e1e1e1;--text-2:#b0b0b0;--muted:#8c8c8c;--faint:#676767;
+  --ink:#f2f2f2;--text:#ebebeb;--text-2:#bdbdbd;--muted:#999;--faint:#6e6e6e;
   --border:#27292a;--border-soft:#212223;--border-strong:#3c3e40;--focus:#9fae9f;
   --shadow:0 8px 28px #00000066;--backdrop:#00000080;
   --primary:#ececec;--primary-text:#151515;
