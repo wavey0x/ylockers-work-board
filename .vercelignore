@@ -1,0 +1,14 @@
+# Deploy only build inputs. Local snapshots, credentials and operational files
+# must never be uploaded by a manual Vercel CLI deployment.
+*
+!package.json
+!package-lock.json
+!index.html
+!vite.config.mjs
+!vercel.json
+!src/
+!src/**
+!public/
+!public/**
+!sync/
+!sync/*.mjs

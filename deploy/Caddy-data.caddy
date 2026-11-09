@@ -1,0 +1,9 @@
+# Import inside the existing api.wavey.info site block.
+# Expose only this exact public snapshot, never the surrounding directory.
+handle /ylockers-work-board/board.json {
+	root * /var/lib/ylockers-work-board
+	rewrite * /board.json
+	header Cache-Control "no-store"
+	header X-Content-Type-Options nosniff
+	file_server
+}

@@ -4,7 +4,7 @@ import { configuration } from './sync/config.mjs';
 import { publicSnapshot } from './sync/policy.mjs';
 import { readSnapshot } from './sync/store.mjs';
 
-// Local preview only. Production Caddy serves the published file directly.
+// Local preview only. Vercel proxies the published file from Electro in production.
 function localBoard(server) {
   server.middlewares.use(async (req, res, next) => {
     if (new URL(req.url, 'http://localhost').pathname !== '/board.json') return next();

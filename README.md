@@ -1,6 +1,6 @@
 # yLockers Work Board
 
-A static, read-only public view of the private yLockers team board. The team updates its existing GitHub project; an hourly systemd job publishes a filtered JSON file. Caddy serves the website and that file directly. No running app backend, database, container, visitor accounts or admin controls.
+A static, read-only public view of the private yLockers team board. Vercel builds and serves the frontend from GitHub. An hourly systemd job on Electro publishes a filtered JSON file, served by Caddy and proxied through Vercel. No running app backend, database, container, visitor accounts or admin controls.
 
 ## Local development
 
@@ -33,19 +33,31 @@ Defaults: organization `yLockers`, project `2`, single-select field `Project`. A
 
 Automatic publication assumes titles in allowed categories are suitable for public viewing. A misclassified sensitive item without a recognizable private marker cannot be identified automatically. Keep the original GitHub project and source repositories private.
 
-## Electro deployment
+## Frontend deployment: Vercel
 
-The supplied Caddy site serves `ylockers-work-board.wavey.info`. Point that hostname's DNS at the host and allow Caddy to obtain HTTPS certificates.
+Use the **wavey0x** Vercel account and **wavey0x's projects** team. Check `vercel whoami` before creating, linking or deploying anything; do not use another account's default CLI session.
+
+Connect [wavey0x/ylockers-work-board](https://github.com/wavey0x/ylockers-work-board) to the `ylockers-work-board` Vercel project. Pushes to `main` deploy production automatically; other branches get previews. The checked-in `vercel.json` selects Vite, `npm ci`, `npm run build` and `dist/`. No environment variables or private GitHub access are needed on Vercel.
+
+Add `ylockers-work-board.wavey.info` to the project's domains and point its DNS CNAME to the exact target shown by Vercel. Keep `api.wavey.info` pointed at Electro. Verify the Vercel deployment and its `/board.json` before changing DNS.
+
+`/board.json` is rewritten to `https://api.wavey.info/ylockers-work-board/board.json`, which contains only the filtered public snapshot. Both layers disable caching for this response. Board updates do not require a frontend deployment, and preview deployments use the same public data. The page refreshes data every minute and marks it delayed after two hours without a successful sync. See [Vercel's Git integration](https://vercel.com/docs/git) and [external rewrites](https://vercel.com/docs/routing/rewrites).
+
+`.vercelignore` allows only build inputs during CLI uploads. Runtime data, credentials and local deployment metadata are excluded. Never add the private board token or Telegram credential to Vercel, GitHub Actions, build settings or frontend variables.
+
+## Data deployment: Electro
+
+Import `deploy/Caddy-data.caddy` **inside** the existing `api.wavey.info` Caddy site block. It serves exactly `/ylockers-work-board/board.json`, not the data directory. Validate the full Caddy configuration and reload after changes.
 
 | Location | Purpose |
 | --- | --- |
 | `/opt/ylockers-work-board/scripts/` and `sync/` | Sync code; not web-accessible |
-| `/var/www/ylockers-work-board/` | Built frontend only |
+| `/var/www/ylockers-work-board/` | Previous static frontend, retained during the DNS transition |
 | `/var/lib/ylockers-work-board/board.json` | Public, filtered snapshot |
 | `/etc/ylockers-work-board.env` | GitHub credential; root-owned, mode `0600` |
 | `/etc/ylockers-work-board-alerts.env` | Telegram bot credential and alert chat ID; root-owned, mode `0600` |
 
-Build with `npm ci && npm run build`. Copy `dist/` into the web directory, and the `scripts/` and `sync/` directories into `/opt/ylockers-work-board/`. The sync job uses only Node built-ins; no runtime dependency installation is needed.
+Copy the `scripts/` and `sync/` directories into `/opt/ylockers-work-board/` when updating the sync job. The job uses only Node built-ins; no runtime dependency installation is needed. Frontend auto-deploys do not update this separate server job.
 
 Create the system user `ylockers-board` and its writable data directory before starting the job:
 
@@ -65,7 +77,7 @@ sudo systemctl start ylockers-work-board.service
 sudo systemctl enable --now ylockers-work-board.timer
 ```
 
-Import `deploy/Caddyfile` from the existing Caddy configuration, validate it, then reload Caddy. Serve only the compiled frontend and the exact `/board.json` route; never serve the source checkout or the whole data directory. JSON responses use `Cache-Control: no-store`. The page reads the saved JSON every minute and marks it delayed after two hours without an update.
+Never serve the source checkout or the whole data directory. JSON responses use `Cache-Control: no-store`. The previous `deploy/Caddyfile` is available for an all-Electro fallback: build the frontend locally, copy `dist/` into `/var/www/ylockers-work-board/`, import that site block and point the board hostname back at Electro.
 
 The timer runs hourly and catches up after downtime. Systemd prevents overlapping runs of the same service. Failed attempts leave the old snapshot in place and try again at the next scheduled hour. Read the [systemd timer documentation](https://www.freedesktop.org/software/systemd/man/latest/systemd.timer.html) and [Caddy static-file documentation](https://caddyserver.com/docs/caddyfile/directives/file_server) for host configuration details.
 
