@@ -6,7 +6,7 @@
   --primary:#292929;--primary-text:#fff;
   --warn:#9c7c43;--error-bg:#faf2eb;--error-border:#ecdccf;--error-text:#9a775f;--success-bg:#eaf1e4;--success-text:#657e52;
   --tag-yfactory:#6f8263;--tag-ycrv:#6c8199;--tag-yyb:#977f52;--tag-resupply:#83799d;--tag-tools:#5e8a85;--tag-operations:#8a7466;
-  --blocked:#bd8f84;--ready:#8fa5c2;
+  --blocked:#bd8f84;--ready:#8fa5c2;--progress:#c39d5c;
   --live:#5f9a5a;--card-top:#fff;--card-bottom:#fdfdfd;--gloss:inset 0 1px 0 #ffffff;
   --lift:0 1px 2px #1010100a,0 1px 1px #10101005;--lift-hover:0 10px 22px -10px #1010102e,0 2px 5px #1010100d;
   --shimmer-base:#efefef;--shimmer-hi:#f8f8f8;
@@ -19,7 +19,7 @@
   --primary:#ececec;--primary-text:#151515;
   --warn:#c9a668;--error-bg:#2a201a;--error-border:#43322a;--error-text:#d6a98c;--success-bg:#1d2719;--success-text:#9ebd86;
   --tag-yfactory:#9cb38d;--tag-ycrv:#93abc6;--tag-yyb:#c7ad7d;--tag-resupply:#ada4c8;--tag-tools:#89b7b1;--tag-operations:#bba091;
-  --blocked:#c99a8f;--ready:#8fa8c9;
+  --blocked:#c99a8f;--ready:#8fa8c9;--progress:#d1ae70;
   --live:#7cc177;--card-top:#1c1d1e;--card-bottom:#18191a;--gloss:inset 0 1px 0 #ffffff0b;
   --lift:0 1px 2px #00000059;--lift-hover:0 14px 28px -12px #000000b3,0 2px 6px #00000059;
   --shimmer-base:#1f2021;--shimmer-hi:#2c2e30}
@@ -105,8 +105,8 @@ main{padding:8px 28px 40px;flex:1}
 .column-header>div{display:flex;align-items:center;gap:8px}
 .column-header h2{font-size:12px;color:var(--text);font-weight:550;margin:0}
 .status-dot{width:8px;height:8px;display:inline-block;border:1.4px solid var(--faint);border-radius:50%;flex-shrink:0}
-.status-in-progress{border-color:var(--muted);background:linear-gradient(90deg,var(--muted) 50%,transparent 50%)}
-.status-done{background:var(--muted);border-color:var(--muted)}
+.status-in-progress{border-color:var(--progress);background:linear-gradient(90deg,var(--progress) 50%,transparent 50%)}
+.status-done{background:var(--live);border-color:var(--live)}
 .status-ready{border-color:var(--ready)}
 .status-blocked{border-color:var(--blocked);background:color-mix(in srgb,var(--blocked) 22%,transparent)}
 .column-count{font-size:11px;background:var(--selected);border-radius:4px;padding:1px 6px;line-height:15px;color:var(--muted);font-variant-numeric:tabular-nums}
