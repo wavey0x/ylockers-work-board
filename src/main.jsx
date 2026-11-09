@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Check, ChevronDown, Circle, Columns3, Filter, List, LockKeyhole, Moon, RefreshCw, Search, SlidersHorizontal, Sun, X } from 'lucide-react';
+import { Check, ChevronDown, Circle, Columns3, Filter, List, Moon, RefreshCw, Search, SlidersHorizontal, Sun, X } from 'lucide-react';
 import { Select } from './Select.jsx';
 import './style.css';
 
@@ -105,32 +105,6 @@ function Column({ status, items }) {
     {status === 'Done' && items.length > 6 && <button className="show-more" onClick={() => setExpanded(!expanded)}>{expanded ? 'Show less' : `Show all ${items.length} completed items`}<ChevronDown size={14} className={expanded ? 'rotate' : ''}/></button>}
   </section>;
 }
-function SyncDialog({ close, refresh, automatic, intervalHours = 1 }) {
-  const dialog = useRef(null);
-  const [key, setKey] = useState('');
-  const [message, setMessage] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [ok, setOk] = useState(false);
-  useEffect(() => { dialog.current.showModal(); }, []);
-  async function sync(event) {
-    event.preventDefault(); setBusy(true); setMessage(''); setOk(false);
-    try {
-      const response = await fetch('/api/admin/sync', { method: 'POST', headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(180000) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Sync failed. Please try again.');
-      setMessage(`${result.count} items updated. Your board is up to date.`); setOk(true); setKey(''); await refresh();
-    } catch (error) { setMessage(error.name === 'TimeoutError' ? 'The sync is taking longer than expected. Refresh the board before retrying.' : error.message); }
-    finally { setBusy(false); }
-  }
-  return <dialog ref={dialog} className="sync-dialog" onCancel={close} onClick={event => { if (event.target === dialog.current) close(); }}>
-    <div className="dialog-top"><span className="dialog-icon"><RefreshCw size={20}/></span><button className="icon-button" aria-label="Close sync panel" onClick={close}><X size={18}/></button></div>
-    <h2>Refresh from GitHub</h2><p>The board updates {intervalHours === 1 ? 'hourly' : `every ${intervalHours} hours`}. Team members can also publish the latest changes here.</p>
-    {!automatic && <div className="setup-note">Live sync is not connected yet.</div>}
-    <form onSubmit={sync}><label htmlFor="sync-key">Admin sync key</label><input id="sync-key" type="password" value={key} onChange={event => setKey(event.target.value)} placeholder="Enter your sync key" autoComplete="off" required minLength={32}/><span className="input-help"><LockKeyhole size={12}/>Used for this request only. Never saved in your browser.</span>
-    <button className="primary-button" disabled={busy || !automatic || key.length < 32}><RefreshCw size={15} className={busy ? 'spinning' : ''}/>{busy ? 'Syncing…' : 'Sync now'}</button></form>
-    {message && <div className={`sync-message ${ok ? 'success' : 'error'}`} role="status">{message}</div>}
-  </dialog>;
-}
 function App() {
   const [board, setBoard] = useState(null);
   const [error, setError] = useState('');
@@ -141,13 +115,12 @@ function App() {
   const [status, setStatus] = useState(() => initial('status', 'all', statuses));
   const [showEmpty, setShowEmpty] = useState(false);
   const [settings, setSettings] = useState(false);
-  const [syncOpen, setSyncOpen] = useState(false);
   const [now, setNow] = useState(Date.now);
   const searchRef = useRef(null);
   const settingsRef = useRef(null);
   async function refresh() {
     try {
-      const response = await fetch('/api/board', { cache: 'no-store' });
+      const response = await fetch('/board.json', { cache: 'no-store' });
       if (!response.ok) throw new Error('The board could not be loaded. Please try again.');
       setBoard(await response.json()); setError('');
     } catch (e) { setError(e.message); }
@@ -172,7 +145,8 @@ function App() {
     document.addEventListener('keydown', escape);
     return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape); };
   }, [settings]);
-  useEffect(() => { const handler = event => { if (event.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName) && !syncOpen) { event.preventDefault(); searchRef.current?.focus(); } }; window.addEventListener('keydown', handler); return () => window.removeEventListener('keydown', handler); }, [syncOpen]);
+  useEffect(() => { const handler = event => { if (event.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) { event.preventDefault(); searchRef.current?.focus(); } }; window.addEventListener('keydown', handler); return () => window.removeEventListener('keydown', handler); }, []);
+  const stale = Boolean(board?.syncedAt && now - Date.parse(board.syncedAt) > 2 * 3600_000);
   const items = board?.items ?? [];
   const projects = [...new Set(items.map(item => item.project).filter(Boolean))].sort();
   const owners = [...new Set(items.flatMap(item => item.assignees))].sort();
@@ -181,18 +155,17 @@ function App() {
   const activeFilter = Boolean(search || owner !== 'all' || project !== 'all' || status !== 'all');
   function reset() { setSearch(''); setOwner('all'); setProject('all'); setStatus('all'); }
   return <div className="app-shell">
-    <header className="site-header"><a href="/" className="brand" aria-label="yLockers work board">yLockers</a><span className="header-label">Work board</span><div className="header-actions"><button className="sync-button" aria-label="Sync options" onClick={() => setSyncOpen(true)}><RefreshCw size={13}/><span>Sync</span></button><ThemeToggle/></div></header>
+    <header className="site-header"><a href="/" className="brand" aria-label="yLockers work board">yLockers</a><span className="header-label">Work board</span><div className="header-actions"><ThemeToggle/></div></header>
     <main>
       <h1 className="sr-only">yLockers work board</h1>
       <div className="toolbar"><div className="view-toggle" aria-label="Display layout"><button className={view === 'board' ? 'selected' : ''} aria-pressed={view === 'board'} onClick={() => setView('board')}><Columns3 size={15}/>Board</button><button className={view === 'list' ? 'selected' : ''} aria-pressed={view === 'list'} onClick={() => setView('list')}><List size={16}/>List</button></div><div className="filters"><label className="search-box"><Search size={15}/><input ref={searchRef} aria-label="Search work" placeholder="Search work…" value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { if (search) setSearch(''); else event.currentTarget.blur(); } }}/>{search ? <button aria-label="Clear search" onClick={() => setSearch('')}><X size={13}/></button> : <kbd>/</kbd>}</label><Select label="Assignee" className={owner !== 'all' ? 'active' : ''} value={owner} onChange={setOwner} options={[{ value: 'all', label: 'Everyone' }, ...owners.map(o => ({ value: o, label: displayName(o) })), ...(items.some(i => !i.assignees.length) ? [{ value: 'unassigned', label: 'Unassigned' }] : [])]}/><Select label="Project" className={`project-filter ${project !== 'all' ? 'active' : ''}`} value={project} onChange={setProject} options={[{ value: 'all', label: 'All projects' }, ...projects.map(p => ({ value: p, label: p })), ...(items.some(i => !i.project) ? [{ value: 'none', label: 'No project' }] : [])]}/><div className="settings-wrap" ref={settingsRef}><button className={`icon-button display-button ${settings ? 'selected' : ''} ${status !== 'all' || showEmpty ? 'active' : ''}`} aria-label="Display options" aria-expanded={settings} onClick={() => setSettings(!settings)}><SlidersHorizontal size={16}/></button>{settings && <div className="display-options"><label><input type="checkbox" checked={showEmpty} onChange={e => setShowEmpty(e.target.checked)}/>Show empty columns</label><div className="status-select"><span>Status</span><Select label="Status" align="right" value={status} onChange={setStatus} options={[{ value: 'all', label: 'All statuses' }, ...statuses.map(s => ({ value: s, label: s }))]}/></div></div>}</div></div></div>
-      <div className="board-caption"><div>{activeFilter ? <><Filter size={12}/><span>{filtered.length} of {items.length} items</span><button onClick={reset}>Clear filters<X size={11}/></button></> : <><span className={`caption-dot ${!board?.syncedAt || !board?.sync.configured || board?.sync.stale ? 'muted' : ''}`}/><span title={board?.syncedAt ? dateLabel(board.syncedAt, true) : undefined}>{board?.syncedAt ? `Updated ${relativeLabel(board.syncedAt, now)}` : board ? 'Not synced yet' : 'Loading board…'}</span>{board?.sync.stale && <span className="stale-label">Update delayed</span>}</>}</div><span>{board?.sync.configured ? board.sync.intervalHours === 1 ? 'Syncs hourly' : `Syncs every ${board.sync.intervalHours} hours` : 'Live sync not connected'}</span></div>
+      <div className="board-caption"><div>{activeFilter ? <><Filter size={12}/><span>{filtered.length} of {items.length} items</span><button onClick={reset}>Clear filters<X size={11}/></button></> : <><span className={`caption-dot ${!board?.syncedAt || stale ? 'muted' : ''}`}/><span title={board?.syncedAt ? dateLabel(board.syncedAt, true) : undefined}>{board?.syncedAt ? `Updated ${relativeLabel(board.syncedAt, now)}` : board ? 'Not synced yet' : 'Loading board…'}</span>{stale && <span className="stale-label">Update delayed</span>}</>}</div><span>{board?.syncedAt ? 'Updates hourly' : ''}</span></div>
       {error && <div className="load-error" role="alert">{error}<button onClick={refresh}>Try again</button></div>}
       {!board && !error && <div className="loading-state"><RefreshCw className="spinning" size={18}/>Loading work…</div>}
       {board && !items.length && <div className="no-results"><h2>No work published yet</h2><p>{board.syncedAt ? 'No public items are currently available.' : 'The board will appear after its first sync.'}</p></div>}
       {board && items.length > 0 && !filtered.length && <div className="no-results"><Search size={25}/><h2>No matching work</h2><p>Try a different search or clear your filters.</p><button className="outline-button" onClick={reset}>Clear filters</button></div>}
       {board && filtered.length > 0 && (view === 'board' ? <div className="board" style={{ '--column-count': columns.length }}>{columns.map(s => <Column key={s} status={s} items={filtered.filter(item => item.status === s)}/>)}</div> : <div className="list-container"><table><thead><tr><th>Work</th><th>Project</th><th>Assigned to</th><th>Status</th></tr></thead><tbody>{[...filtered].sort((a, b) => statuses.indexOf(a.status) - statuses.indexOf(b.status)).map(item => <tr key={item.id} className={item.status === 'Done' ? 'completed-row' : ''}><td>{item.title}</td><td><ProjectTag name={item.project}/></td><td><Owners names={item.assignees}/></td><td><span className="table-status"><span className={`status-dot status-${slug(item.status)}`}/>{item.status}</span></td></tr>)}</tbody></table></div>)}
     </main>
-    {syncOpen && <SyncDialog close={() => setSyncOpen(false)} refresh={refresh} automatic={board?.sync.configured} intervalHours={board?.sync.intervalHours}/>}
   </div>;
 }
 createRoot(document.getElementById('root')).render(<App/>);

@@ -28,8 +28,8 @@ export function sanitizeItems(items, options) {
   return items.map(item => publicItem(item, options)).filter(Boolean);
 }
 
-// Recheck the stored format before writing it and before serving it. Old or
-// manually edited snapshots must not bypass the publication policy.
+// Rebuild the final snapshot from approved fields before publication.
+// Never copy arbitrary loader fields into the public JSON file.
 export function publicSnapshot(snapshot, { allowedProjects = DEFAULT_PROJECTS } = {}) {
   if (snapshot == null) return { schemaVersion: 1, source: 'empty', syncedAt: null, items: [] };
   if (snapshot.schemaVersion !== 1 || snapshot.source !== 'github' || !Array.isArray(snapshot.items)

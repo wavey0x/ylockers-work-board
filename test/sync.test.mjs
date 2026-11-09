@@ -1,18 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { publicItem, publicSnapshot, sanitizeItems } from '../server/policy.mjs';
-import { fetchBoard } from '../server/github.mjs';
-import { createSync } from '../server/sync.mjs';
-import { readJSON, writeJSON } from '../server/store.mjs';
-import { configuration, createApp } from '../server/index.mjs';
+import { publicItem, publicSnapshot, sanitizeItems } from '../sync/policy.mjs';
+import { fetchBoard } from '../sync/github.mjs';
+import { publishBoard } from '../sync/publish.mjs';
+import { readSnapshot } from '../sync/store.mjs';
+import { configuration } from '../sync/config.mjs';
+import { spawnSync } from 'node:child_process';
 
 function item(project = 'Tools', extra = {}) {
   return { id: 'private-project-node', isArchived: false, fieldValues: { nodes: [{ name: project, field: { name: 'Project' } }, { name: 'In Progress', field: { name: 'Status' } }] }, content: { __typename: 'Issue', title: 'Improve vote reporting', body: 'CONFIDENTIAL', url: 'https://github.com/example/internal/issues/1', assignees: { nodes: [{ login: 'wavey0x' }] }, labels: { nodes: [] }, repository: { nameWithOwner: 'example/internal' } }, ...extra };
 }
-const config = { githubToken: 'test-only', org: 'yLockers', projectNumber: 2, projectField: 'Project', allowedProjects: ['Tools', 'Operations'], intervalHours: 1 };
+const config = { githubToken: 'test-only', org: 'yLockers', projectNumber: 2, projectField: 'Project', allowedProjects: ['Tools', 'Operations'] };
 function response(items, more = false, cursor = null) { return { ok: true, json: async () => ({ data: { organization: { projectV2: { fields: { pageInfo: { hasNextPage: false }, nodes: [{ name: 'Project' }, { name: 'Status' }] }, items: { nodes: items, pageInfo: { hasNextPage: more, endCursor: cursor } } } } } }) }; }
 
 test('only selected fields from explicitly allowed categories leave the server', () => {
@@ -61,83 +62,42 @@ test('all GitHub pages are read; a later error aborts the whole sync', async () 
   await assert.rejects(fetchBoard(config, async () => ++calls === 1 ? response([item()], true, 'next') : { ok: false, status: 502 }), /failed/);
   await assert.rejects(fetchBoard(config, async () => response([{ id: 'redacted', content: null }])), /inaccessible/);
 });
-test('successful snapshots replace removed items; failed sync keeps the last complete snapshot', async () => {
+test('a standalone sync replaces the snapshot and preserves it on any failure', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ylockers-test-'));
   let fail = false; let rows = sanitizeItems([item()]);
-  const sync = createSync({ ...config, dataDir }, { load: async () => { if (fail) throw new Error('Source unavailable'); return rows; } });
+  const cfg = { ...config, dataDir };
+  const load = async () => { if (fail) throw new Error('Source unavailable'); return rows; };
   try {
-    await sync.run(); const original = await readJSON(join(dataDir, 'board.json'));
-    fail = true; await assert.rejects(sync.run());
-    assert.deepEqual(await readJSON(join(dataDir, 'board.json')), original);
-    fail = false; rows = []; await sync.run();
-    assert.deepEqual((await readJSON(join(dataDir, 'board.json'))).items, []);
-    assert.equal(sync.status().lastError, null);
+    await publishBoard(cfg, { load });
+    const original = await readSnapshot(dataDir);
+    assert.equal((await stat(join(dataDir, 'board.json'))).mode & 0o777, 0o644);
+    assert.deepEqual(await readdir(dataDir), ['board.json']);
+    fail = true; await assert.rejects(publishBoard(cfg, { load }));
+    assert.deepEqual(await readSnapshot(dataDir), original);
+    fail = false; rows = [{ ...publicItem(item()), status: 'Unexpected' }];
+    await assert.rejects(publishBoard(cfg, { load }));
+    assert.deepEqual(await readSnapshot(dataDir), original);
     rows = [{ ...publicItem(item()), body: 'PRIVATE' }, { ...publicItem(item()), title: 'yRisk task' }];
-    await sync.run();
-    const saved = JSON.stringify(await readJSON(join(dataDir, 'board.json')));
+    await publishBoard(cfg, { load });
+    const saved = JSON.stringify(await readSnapshot(dataDir));
     assert.equal(saved.includes('PRIVATE'), false);
     assert.equal(saved.includes('yRisk'), false);
-  } finally { sync.stop(); await rm(dataDir, { recursive: true, force: true }); }
+    rows = []; await publishBoard(cfg, { load });
+    assert.deepEqual((await readSnapshot(dataDir)).items, []);
+    assert.deepEqual(await readdir(dataDir), ['board.json']);
+  } finally { await rm(dataDir, { recursive: true, force: true }); }
 });
-test('syncs are serialized and successful runs set the next update one hour later', async () => {
-  const dataDir = await mkdtemp(join(tmpdir(), 'ylockers-timer-'));
-  let release;
-  const gate = new Promise(resolve => { release = resolve; });
-  let calls = 0;
-  const fixed = new Date('2026-11-09T18:00:00Z');
-  const sync = createSync({ ...config, dataDir }, { now: () => fixed, load: async () => { calls++; await gate; return []; } });
+test('only the explicit board credential is used; no credential means no publication', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ylockers-unconfigured-'));
   try {
-    const first = sync.run(); const second = sync.run();
-    release(); await Promise.all([first, second]);
-    assert.equal(calls, 1);
-    assert.equal(sync.status().nextSyncAt, '2026-11-09T19:00:00.000Z');
-    const restarted = createSync({ ...config, dataDir }, { now: () => fixed, load: async () => { throw new Error('Should not sync before due'); } });
-    await restarted.start();
-    assert.equal(restarted.status().nextSyncAt, '2026-11-09T19:00:00.000Z');
-    assert.equal(restarted.status().lastError, null);
-    restarted.stop();
-  } finally { sync.stop(); await rm(dataDir, { recursive: true, force: true }); }
-});
-test('shortening the sync interval brings the next scheduled update forward', async () => {
-  const dataDir = await mkdtemp(join(tmpdir(), 'ylockers-interval-'));
-  await writeJSON(dataDir, 'sync.json', { lastSuccessAt: '2026-11-09T18:00:00.000Z', nextSyncAt: '2026-11-10T00:00:00.000Z', lastError: null });
-  const sync = createSync({ ...config, dataDir }, { now: () => new Date('2026-11-09T18:30:00Z'), load: async () => { throw new Error('Not yet due'); } });
-  try {
-    await sync.start();
-    assert.equal(sync.status().nextSyncAt, '2026-11-09T19:00:00.000Z');
-    assert.equal(sync.status().lastError, null);
-  } finally { sync.stop(); await rm(dataDir, { recursive: true, force: true }); }
-});
-test('public HTTP API exposes no credentials and every admin endpoint requires authentication', async () => {
-  const dataDir = await mkdtemp(join(tmpdir(), 'ylockers-http-'));
-  const cfg = configuration({ DATA_DIR: dataDir, ADMIN_SYNC_TOKEN: 'a'.repeat(48) });
-  let runs = 0;
-  assert.equal(cfg.intervalHours, 1);
-  const fakeSync = { status: () => ({ configured: false, intervalHours: 1, nextSyncAt: null, lastError: 'PRIVATE ERROR' }), run: async () => { runs++; } };
-  const { server } = createApp(cfg, fakeSync);
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const url = `http://127.0.0.1:${server.address().port}`;
-  try {
-    const publicResponse = await fetch(url + '/api/board'); const text = await publicResponse.text();
-    assert.equal(publicResponse.headers.get('cache-control'), 'no-store');
-    assert.equal(text.includes('PRIVATE ERROR'), false); assert.equal(text.includes(cfg.adminToken), false);
-    assert.equal(JSON.parse(text).items.length, 0);
-    assert.equal(JSON.parse(text).source, 'empty');
-    const safe = publicItem(item());
-    await writeJSON(dataDir, 'board.json', { schemaVersion: 1, source: 'github', syncedAt: '2026-11-09T18:00:00Z', token: 'PRIVATE', items: [{ ...safe, body: 'PRIVATE' }, { ...safe, title: 'yRisk task' }] });
-    const cached = await (await fetch(url + '/api/board')).json();
-    assert.deepEqual(cached.items, [safe]);
-    assert.equal(JSON.stringify(cached).includes('PRIVATE'), false);
-    await writeJSON(dataDir, 'board.json', { schemaVersion: 1, source: 'snapshot', items: [{ title: 'PRIVATE' }] });
-    const invalid = await fetch(url + '/api/board');
-    assert.equal(invalid.status, 503);
-    assert.equal((await invalid.text()).includes('PRIVATE'), false);
-    for (const path of ['/api/admin/status', '/api/admin/sync']) assert.equal((await fetch(url + path, { method: path.endsWith('sync') ? 'POST' : 'GET' })).status, 401);
-    assert.equal((await fetch(url + '/api/admin/sync', { method: 'POST', headers: { Authorization: `Bearer ${cfg.adminToken}` } })).status, 503);
-    assert.equal(runs, 0);
-    assert.equal((await fetch(url + '/.env')).status, 404);
-    assert.equal((await fetch(url + '/data/board.json')).status, 404);
-    assert.equal((await fetch(url + '/server/index.mjs')).status, 404);
-    assert.equal((await fetch(url + '/seed/public-snapshot.json')).status, 404);
-  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(dataDir, { recursive: true, force: true }); }
+    const cfg = configuration({ GITHUB_TOKEN: 'unrelated-credential', BOARD_DATA_DIR: dataDir });
+    assert.equal(cfg.githubToken, '');
+    await assert.rejects(publishBoard(cfg), /BOARD_GITHUB_TOKEN/);
+    assert.deepEqual(await readdir(dataDir), []);
+    const result = spawnSync(process.execPath, ['scripts/sync.mjs'], { encoding: 'utf8', env: { BOARD_GITHUB_TOKEN: '', GITHUB_TOKEN: 'unrelated-credential', BOARD_DATA_DIR: dataDir } });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /BOARD_GITHUB_TOKEN/);
+    assert.equal(result.stderr.includes('unrelated-credential'), false);
+    assert.deepEqual(await readdir(dataDir), []);
+  } finally { await rm(dataDir, { recursive: true, force: true }); }
 });

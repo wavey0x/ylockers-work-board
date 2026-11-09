@@ -1,10 +1,8 @@
 # yLockers Work Board
 
-A self-hosted, read-only public view of the private yLockers team board. React frontend, a small Node HTTP server, and one persistent JSON snapshot. No OpenAI hosting, external database, analytics, or visitor accounts.
+A static, read-only public view of the private yLockers team board. The team updates its existing GitHub project; an hourly systemd job publishes a filtered JSON file. Caddy serves the website and that file directly. No running app backend, database, container, visitor accounts or admin controls.
 
-The team keeps updating its existing GitHub board. The server reads that board hourly and publishes only selected fields from eligible items. The Sync button allows an authorized maintainer to refresh on demand.
-
-## Run locally
+## Local development
 
 Requires Node 24 or newer.
 
@@ -14,76 +12,75 @@ cp .env.example .env
 npm run dev
 ```
 
-Open http://127.0.0.1:5178. A fresh installation shows an empty board until its first successful sync. No real tasks or saved source snapshots are bundled with the app.
+Open http://127.0.0.1:5178. The preview starts empty. Configure the credential in `.env`, then run `npm run sync` to populate the local `data/board.json`. The dev server reads this file without connecting to GitHub. `npm run build` builds only the frontend; it never copies runtime board data into `dist/`.
 
-## Connect the source
+## GitHub access
 
-Set `BOARD_GITHUB_TOKEN` in `.env` to a dedicated credential with read access to organization Projects and the underlying private issues. For a classic PAT, that means `read:project` and `repo`; for an organization-approved fine-grained PAT, grant Projects read permission and repository Issues/Pull requests read access. Authorize organization SSO if required. Prefer a dedicated narrowly scoped credential where your GitHub organization permits it.
+Set `BOARD_GITHUB_TOKEN` to a dedicated credential with organization Projects read access and access to the underlying private issues. A classic PAT needs `read:project` and `repo`; an organization-approved fine-grained PAT needs Projects read and repository Issues/Pull requests read permissions. Authorize organization SSO if required. Never put credentials in a `VITE_` variable or the public directory. See [GitHub's Projects API authentication documentation](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-api-to-manage-projects#authentication).
 
-Generate `ADMIN_SYNC_TOKEN` with at least 32 random characters and store it in `.env`. For example, generate one locally with `openssl rand -hex 32`. The sync dialog uses this key for that request only, keeps it out of URLs, and does not persist it in the browser. Never use a `VITE_` environment variable for credentials.
-
-Default source: organization `yLockers`, project `2`, single-select field `Project`. Eligible values: `yFactory`, `yYB`, `yCRV`, `Resupply`, `Tools`, `Operations`.
-
-Once configured, the running server syncs on startup if due, then one hour after each successful sync. It retries failed attempts after 15 minutes and retains the last complete snapshot. A manual sync resets the timer. Set `SYNC_INTERVAL_HOURS` to change the interval. The timer survives server restarts through the private state file; run one server replica per data directory. The process must stay running for unattended updates.
+Defaults: organization `yLockers`, project `2`, single-select field `Project`. Allowed categories are `yFactory`, `yYB`, `yCRV`, `Resupply`, `Tools`, and `Operations`.
 
 ## Publication rules
 
-- Only the explicitly listed Project categories are eligible. Missing or unknown categories stay private. No extra per-item approval field is required.
-- yRisk in the project category, title, repository name, or labels always excludes an item, even if it otherwise matches an allowed category.
-- Publish only title, status, category, assignee logins, and an opaque generated card identifier. Descriptions, comments, attachments, source URLs, and raw GitHub node IDs are never exported.
-- Archived items are omitted. Done items remain visible until archived or removed from the source board.
-- Read all pages before replacing the snapshot. GraphQL errors, lost access, missing field definitions, incomplete metadata, and unexpected statuses stop publication.
-- Each successful sync replaces the public dataset, so removed or reclassified items disappear. Previously published information can still exist in visitors' copies.
-- Raw source payloads are neither persisted nor logged. Only sanitized data reaches the browser. The default production server serves `dist/` and designated API responses; `.env`, `server/`, and `data/` are not web directories.
-- Stored snapshots are checked again before serving: only the current allowed categories and explicit public fields can leave the API. Unsupported older snapshot formats are rejected.
+- Only explicitly allowed categories publish. Unclassified, unknown and archived items stay private.
+- yRisk in the category, title, repository name or labels excludes an item, even in an allowed category.
+- Export only title, status, category, assignee logins and an opaque generated identifier. Never export descriptions, comments, attachments, source URLs or raw GitHub IDs.
+- Complete every source page and validate all eligible items before writing. Incomplete metadata, inaccessible items, GraphQL errors and unexpected statuses stop publication.
+- Rebuild the final JSON from allowed fields, then replace `board.json` atomically. Failures retain the last successful snapshot. Raw source responses are never saved or logged.
+- Successful runs remove deleted, archived or reclassified items. Classification changes take effect on the next successful run; copies of previously published data cannot be recalled.
 
-The automatic rule assumes titles in the selected yLockers categories are suitable for public viewing. Classify sensitive cross-team work as yRisk or a non-public category before adding it to the board. New source categories require an explicit configuration update to become public. A misclassified item without a recognizable private marker cannot be identified automatically. Classification changes reach the public view on the next successful sync; a failed sync retains the previous view.
+Automatic publication assumes titles in allowed categories are suitable for public viewing. A misclassified sensitive item without a recognizable private marker cannot be identified automatically. Keep the original GitHub project and source repositories private.
 
-## Host it yourself
+## Electro deployment
+
+The supplied Caddy site serves `ylockers-work-board.wavey.info`. Point that hostname's DNS at the host and allow Caddy to obtain HTTPS certificates.
+
+| Location | Purpose |
+| --- | --- |
+| `/opt/ylockers-work-board/scripts/` and `sync/` | Sync code; not web-accessible |
+| `/var/www/ylockers-work-board/` | Built frontend only |
+| `/var/lib/ylockers-work-board/board.json` | Public, filtered snapshot |
+| `/etc/ylockers-work-board.env` | GitHub credential; root-owned, mode `0600` |
+
+Build with `npm ci && npm run build`. Copy `dist/` into the web directory, and the `scripts/` and `sync/` directories into `/opt/ylockers-work-board/`. The sync job uses only Node built-ins; no runtime dependency installation is needed.
+
+Create the system user `ylockers-board` and its writable data directory before starting the job:
 
 ```sh
-npm ci
-npm run build
-npm start
+sudo useradd --system --home-dir /var/lib/ylockers-work-board --no-create-home --shell /usr/sbin/nologin ylockers-board
+sudo install -d -o ylockers-board -g ylockers-board -m 0755 /var/lib/ylockers-work-board
+sudo install -m 0600 .env.example /etc/ylockers-work-board.env
+sudoedit /etc/ylockers-work-board.env
 ```
 
-The production server listens on `127.0.0.1:8080` by default. Put it behind your existing HTTPS reverse proxy. For example, a Caddy site block can use `reverse_proxy 127.0.0.1:8080` under your chosen domain. Do not expose the Vite development server in production.
-
-Or run the included container:
+Set the credential in that file. The systemd service sets the production output path independently of the environment file. Install the units and run a first sync:
 
 ```sh
-docker compose up -d --build
+sudo install -m 0644 deploy/ylockers-work-board.service deploy/ylockers-work-board.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl start ylockers-work-board.service
+sudo systemctl enable --now ylockers-work-board.timer
 ```
 
-The container uses a persistent named volume for snapshots, binds its host port to loopback, and runs as a non-root user. Back up the volume. HTTPS belongs at the reverse proxy. No OpenAI services are required.
+Import `deploy/Caddyfile` from the existing Caddy configuration, validate it, then reload Caddy. Serve only the compiled frontend and the exact `/board.json` route; never serve the source checkout or the whole data directory. JSON responses use `Cache-Control: no-store`. The page reads the saved JSON every minute and marks it delayed after two hours without an update.
 
-### Storage and scheduling
+The timer runs hourly and catches up after downtime. Systemd prevents overlapping runs of the same service. Failed attempts leave the old snapshot in place and try again at the next scheduled hour. Read the [systemd timer documentation](https://www.freedesktop.org/software/systemd/man/latest/systemd.timer.html) and [Caddy static-file documentation](https://caddyserver.com/docs/caddyfile/directives/file_server) for host configuration details.
 
-Run one container on your host behind its existing HTTPS proxy. The built-in timer performs the hourly sync; a separate cron job is unnecessary. Visitors read the saved public snapshot, not GitHub.
+For maintenance:
 
-| File | Contents | Location |
-| --- | --- | --- |
-| `board.json` | Filtered public cards and last successful sync time | Persistent `board-data` volume, mounted at `/app/data` |
-| `sync.json` | Private scheduler state and latest error | Same volume; never served directly |
-| Environment file | GitHub credential and admin sync key | Host only; excluded from Git and the image |
+```sh
+sudo systemctl start ylockers-work-board.service
+systemctl list-timers ylockers-work-board.timer
+sudo journalctl -u ylockers-work-board.service --since today
+```
 
-For credentials outside the checkout, create a restricted file on the host, then launch with `BOARD_ENV_FILE=/etc/ylockers-work-board.env docker compose up -d --build`. The default is the ignored `.env` file. The runtime writes snapshots atomically with owner-only permissions. Rebuilding the app preserves the volume; `docker compose down -v` deletes it.
+Manual starts are a server maintenance command; there is no public sync API. Service logs contain counts, timestamps and generic failures, never task titles or credentials. Data survives frontend updates because it lives outside the web directory. Back up the data and credential file privately.
 
-### Publishing this repository
-
-Publish the application source only. `.gitignore` and `.dockerignore` exclude credentials, runtime data, preview artifacts, backups and dependency folders. Tests use invented tasks. Before each push, inspect the staged files; ignore rules do not protect files that were already tracked. Keep the original GitHub project and its repositories private. This app does not change their visibility.
-
-## Manual sync
-
-Use the Sync button and admin key, or run `npm run sync` alongside the configured server. For a remote instance, set `BOARD_URL` to its HTTPS origin. Admin routes require a bearer key; the public API never returns source credentials or detailed sync errors.
-
-The protected `GET /api/admin/status` route reports the latest attempt, success, error and next scheduled run. Public `GET /api/board` provides the filtered snapshot and freshness metadata. `POST /api/admin/sync` performs an authenticated sync. The UI rechecks the published snapshot every minute; this does not request another GitHub sync.
-
-## Verify
+## Verification and repository privacy
 
 ```sh
 npm test
 npm run build
 ```
 
-Tests cover yRisk exclusion, unclassified items, field allowlisting at both boundaries, pagination failures, retaining the last valid snapshot, removal reconciliation, scheduling and protection of admin routes and private files.
+Tests use invented tasks and cover filtering, field allowlisting, complete pagination, failed-sync preservation, removal reconciliation and the standalone command. No real snapshots are included. Git ignores `.env`, runtime data, preview artifacts and backups. Inspect staged files before pushing; ignore rules do not protect previously tracked files.

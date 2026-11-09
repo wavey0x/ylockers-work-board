@@ -1,0 +1,10 @@
+[Unit]
+Description=Update the yLockers public work board hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=ylockers-work-board.service
+
+[Install]
+WantedBy=timers.target
