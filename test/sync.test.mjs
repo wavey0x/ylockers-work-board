@@ -13,7 +13,8 @@ import { spawnSync } from 'node:child_process';
 function item(project = 'Tools', extra = {}) {
   return { id: 'private-project-node', isArchived: false, fieldValues: { nodes: [{ name: project, field: { name: 'Project' } }, { name: 'In Progress', field: { name: 'Status' } }] }, content: { __typename: 'Issue', title: 'Improve vote reporting', body: 'CONFIDENTIAL', url: 'https://github.com/example/internal/issues/1', assignees: { nodes: [{ login: 'wavey0x' }] }, labels: { nodes: [] }, repository: { nameWithOwner: 'example/internal' } }, ...extra };
 }
-const config = { githubToken: 'test-only', org: 'yLockers', projectNumber: 2, projectField: 'Project', allowedProjects: ['Tools', 'Operations'] };
+const config = { githubToken: 'test-only', org: 'yLockers', projectNumber: 2, repositories: ['example/internal'], projectField: 'Project', allowedProjects: ['Tools', 'Operations'] };
+const withAccess = handler => (url, options) => options.method === 'HEAD' ? Promise.resolve({ ok: true }) : handler(url, options);
 function response(items, more = false, cursor = null) { return { ok: true, json: async () => ({ data: { organization: { projectV2: { fields: { pageInfo: { hasNextPage: false }, nodes: [{ name: 'Project' }, { name: 'Status' }] }, items: { nodes: items, pageInfo: { hasNextPage: more, endCursor: cursor } } } } } }) }; }
 
 test('only selected fields from explicitly allowed categories leave the server', () => {
@@ -52,15 +53,15 @@ test('stored snapshots are rebuilt from public fields and current categories onl
 });
 test('all GitHub pages are read; a later error aborts the whole sync', async () => {
   let calls = 0;
-  const result = await fetchBoard(config, async (_, options) => {
+  const result = await fetchBoard(config, withAccess(async (_, options) => {
     const cursor = JSON.parse(options.body).variables.cursor;
     calls++; if (calls === 1) { assert.equal(cursor, null); return response([item()], true, 'next'); }
     assert.equal(cursor, 'next'); return response([item('yRisk')]);
-  });
+  }));
   assert.equal(calls, 2); assert.equal(result.length, 1);
   calls = 0;
-  await assert.rejects(fetchBoard(config, async () => ++calls === 1 ? response([item()], true, 'next') : { ok: false, status: 502 }), /failed/);
-  await assert.rejects(fetchBoard(config, async () => response([{ id: 'redacted', content: null }])), /inaccessible/);
+  await assert.rejects(fetchBoard(config, withAccess(async () => ++calls === 1 ? response([item()], true, 'next') : { ok: false, status: 502 })), /failed/);
+  await assert.rejects(fetchBoard(config, withAccess(async () => response([{ id: 'redacted', content: null }]))), /inaccessible/);
 });
 test('a standalone sync replaces the snapshot and preserves it on any failure', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ylockers-test-'));
@@ -99,5 +100,22 @@ test('only the explicit board credential is used; no credential means no publica
     assert.match(result.stderr, /BOARD_GITHUB_TOKEN/);
     assert.equal(result.stderr.includes('unrelated-credential'), false);
     assert.deepEqual(await readdir(dataDir), []);
+  } finally { await rm(dataDir, { recursive: true, force: true }); }
+});
+test('lost repository access cannot silently erase a populated snapshot', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ylockers-access-'));
+  const cfg = { ...config, dataDir };
+  try {
+    await publishBoard(cfg, { load: async () => [publicItem(item())] });
+    const original = await readSnapshot(dataDir);
+    let calls = 0;
+    await assert.rejects(publishBoard(cfg, { load: options => fetchBoard(options, async (url, request) => {
+      calls++;
+      assert.equal(request.method, 'HEAD');
+      assert.equal(url, 'https://api.github.com/repos/example/internal/issues');
+      return { ok: false, status: 404 };
+    }) }), /repository read access/);
+    assert.equal(calls, 1);
+    assert.deepEqual(await readSnapshot(dataDir), original);
   } finally { await rm(dataDir, { recursive: true, force: true }); }
 });

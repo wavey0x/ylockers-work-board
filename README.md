@@ -20,6 +20,8 @@ Set `BOARD_GITHUB_TOKEN` to a dedicated credential with organization Projects re
 
 Defaults: organization `yLockers`, project `2`, single-select field `Project`. Allowed categories are `yFactory`, `yYB`, `yCRV`, `Resupply`, `Tools`, and `Operations`.
 
+`GITHUB_REPOSITORIES` lists every private repository used by the board, separated by commas. Before each sync, the job checks Issues and Pull requests access without downloading their contents. This prevents GitHub's silently filtered empty response from erasing the published board when repository access is missing. Update the list when adding a new source repository.
+
 ## Publication rules
 
 - Only explicitly allowed categories publish. Unclassified, unknown and archived items stay private.

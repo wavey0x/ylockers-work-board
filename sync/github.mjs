@@ -17,6 +17,19 @@ const query = `query($org:String!,$number:Int!,$cursor:String){
 }`;
 
 export async function fetchBoard(config, fetcher = fetch) {
+  // GitHub can silently omit every item when a token has Project access but
+  // cannot read the private repositories. Check access before trusting an empty
+  // project response. HEAD checks permissions without fetching issue bodies.
+  for (const repository of config.repositories) {
+    for (const resource of ['issues', 'pulls']) {
+      const access = await fetcher(`https://api.github.com/repos/${repository}/${resource}`, {
+        method: 'HEAD',
+        headers: { Authorization: `Bearer ${config.githubToken}`, Accept: 'application/vnd.github+json', 'User-Agent': 'ylockers-work-board' },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!access.ok) throw new Error('GitHub repository read access is missing; publication stopped.');
+    }
+  }
   let cursor = null;
   const safeItems = [];
   for (let page = 0; page < 100; page++) {
