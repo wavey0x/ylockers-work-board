@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Check, ChevronDown, Circle, Columns3, Filter, List, LockKeyhole, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Check, ChevronDown, Circle, Columns3, Filter, List, LockKeyhole, Moon, RefreshCw, Search, SlidersHorizontal, Sun, X } from 'lucide-react';
 import './style.css';
 
 const statuses = ['Backlog', 'Ready', 'In Progress', 'Blocked', 'Done'];
@@ -18,6 +18,41 @@ function Avatar({ name }) {
 function dateLabel(value, time = false) {
   if (!value) return 'Never';
   return new Date(value.length === 10 ? value + 'T12:00:00Z' : value).toLocaleString('en-US', { month: 'short', day: 'numeric', ...(time ? { hour: 'numeric', minute: '2-digit' } : { year: 'numeric' }) });
+}
+function relativeLabel(value, now) {
+  const minutes = Math.round((now - Date.parse(value)) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  return dateLabel(value, true);
+}
+const params = new URLSearchParams(location.search);
+const initial = (name, fallback, allowed) => { const value = params.get(name); return value && (!allowed || allowed.includes(value)) ? value : fallback; };
+function useTheme() {
+  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.querySelector('meta[name=theme-color]')?.setAttribute('content', theme === 'dark' ? '#111212' : '#fafafa');
+  }, [theme]);
+  useEffect(() => {
+    // Follow the system setting until the visitor picks a theme.
+    const media = matchMedia('(prefers-color-scheme: dark)');
+    const follow = event => { try { if (localStorage.getItem('theme')) return; } catch {} setTheme(event.matches ? 'dark' : 'light'); };
+    media.addEventListener('change', follow);
+    return () => media.removeEventListener('change', follow);
+  }, []);
+  function toggle() {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    try { localStorage.setItem('theme', next); } catch {}
+    setTheme(next);
+  }
+  return [theme, toggle];
+}
+function ThemeToggle() {
+  const [theme, toggle] = useTheme();
+  const label = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+  return <button className="icon-button theme-toggle" aria-label={label} title={label} onClick={toggle}>{theme === 'dark' ? <Sun size={15}/> : <Moon size={15}/>}</button>;
 }
 function ProjectTag({ name }) { return name ? <span className={`project-tag project-${slug(name)}`}><span />{name}</span> : null; }
 function CompactOwners({ names }) {
@@ -98,15 +133,17 @@ function SyncDialog({ close, refresh, automatic, intervalHours = 1 }) {
 function App() {
   const [board, setBoard] = useState(null);
   const [error, setError] = useState('');
-  const [view, setView] = useState('board');
-  const [search, setSearch] = useState('');
-  const [owner, setOwner] = useState('all');
-  const [project, setProject] = useState('all');
-  const [status, setStatus] = useState('all');
+  const [view, setView] = useState(() => initial('view', 'board', ['board', 'list']));
+  const [search, setSearch] = useState(() => initial('q', ''));
+  const [owner, setOwner] = useState(() => initial('owner', 'all'));
+  const [project, setProject] = useState(() => initial('project', 'all'));
+  const [status, setStatus] = useState(() => initial('status', 'all', statuses));
   const [showEmpty, setShowEmpty] = useState(false);
   const [settings, setSettings] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
+  const [now, setNow] = useState(Date.now);
   const searchRef = useRef(null);
+  const settingsRef = useRef(null);
   async function refresh() {
     try {
       const response = await fetch('/api/board', { cache: 'no-store' });
@@ -114,7 +151,26 @@ function App() {
       setBoard(await response.json()); setError('');
     } catch (e) { setError(e.message); }
   }
-  useEffect(() => { refresh(); const timer = setInterval(refresh, 60_000); return () => clearInterval(timer); }, []);
+  useEffect(() => { refresh(); const timer = setInterval(() => { refresh(); setNow(Date.now()); }, 60_000); return () => clearInterval(timer); }, []);
+  useEffect(() => {
+    // Keep the view and filters in the address so a filtered board can be shared.
+    const next = new URLSearchParams();
+    if (view !== 'board') next.set('view', view);
+    if (search) next.set('q', search);
+    if (owner !== 'all') next.set('owner', owner);
+    if (project !== 'all') next.set('project', project);
+    if (status !== 'all') next.set('status', status);
+    const query = next.toString();
+    history.replaceState(null, '', query ? `?${query}` : location.pathname);
+  }, [view, search, owner, project, status]);
+  useEffect(() => {
+    if (!settings) return;
+    const dismiss = event => { if (!settingsRef.current?.contains(event.target)) setSettings(false); };
+    const escape = event => { if (event.key === 'Escape') setSettings(false); };
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape); };
+  }, [settings]);
   useEffect(() => { const handler = event => { if (event.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName) && !syncOpen) { event.preventDefault(); searchRef.current?.focus(); } }; window.addEventListener('keydown', handler); return () => window.removeEventListener('keydown', handler); }, [syncOpen]);
   const items = board?.items ?? [];
   const projects = [...new Set(items.map(item => item.project).filter(Boolean))].sort();
@@ -124,16 +180,16 @@ function App() {
   const activeFilter = Boolean(search || owner !== 'all' || project !== 'all' || status !== 'all');
   function reset() { setSearch(''); setOwner('all'); setProject('all'); setStatus('all'); }
   return <div className="app-shell">
-    <header className="site-header"><a href="/" className="brand" aria-label="yLockers work board">yLockers</a><span className="header-label">Work board</span><button className="sync-button" aria-label="Sync options" onClick={() => setSyncOpen(true)}><RefreshCw size={13}/><span>Sync</span></button></header>
+    <header className="site-header"><a href="/" className="brand" aria-label="yLockers work board">yLockers</a><span className="header-label">Work board</span><div className="header-actions"><button className="sync-button" aria-label="Sync options" onClick={() => setSyncOpen(true)}><RefreshCw size={13}/><span>Sync</span></button><ThemeToggle/></div></header>
     <main>
       <h1 className="sr-only">yLockers work board</h1>
-      <div className="toolbar"><div className="view-toggle" aria-label="Display layout"><button className={view === 'board' ? 'selected' : ''} aria-pressed={view === 'board'} onClick={() => setView('board')}><Columns3 size={15}/>Board</button><button className={view === 'list' ? 'selected' : ''} aria-pressed={view === 'list'} onClick={() => setView('list')}><List size={16}/>List</button></div><div className="filters"><label className="search-box"><Search size={15}/><input ref={searchRef} aria-label="Search work" placeholder="Search work…" value={search} onChange={event => setSearch(event.target.value)}/>{search ? <button aria-label="Clear search" onClick={() => setSearch('')}><X size={13}/></button> : <kbd>/</kbd>}</label><label className="filter-select"><span className="sr-only">Assignee</span><select value={owner} onChange={e => setOwner(e.target.value)}><option value="all">Everyone</option>{owners.map(o => <option key={o} value={o}>{displayName(o)}</option>)}{items.some(i => !i.assignees.length) && <option value="unassigned">Unassigned</option>}</select><ChevronDown size={13}/></label><label className="filter-select project-filter"><span className="sr-only">Project</span><select value={project} onChange={e => setProject(e.target.value)}><option value="all">All projects</option>{projects.map(p => <option key={p}>{p}</option>)}{items.some(i => !i.project) && <option value="none">No project</option>}</select><ChevronDown size={13}/></label><div className="settings-wrap"><button className={`icon-button display-button ${settings ? 'selected' : ''}`} aria-label="Display options" aria-expanded={settings} onClick={() => setSettings(!settings)}><SlidersHorizontal size={16}/></button>{settings && <div className="display-options"><label><input type="checkbox" checked={showEmpty} onChange={e => setShowEmpty(e.target.checked)}/>Show empty columns</label><label className="status-select">Status<select value={status} onChange={e => setStatus(e.target.value)}><option value="all">All statuses</option>{statuses.map(s => <option key={s}>{s}</option>)}</select></label></div>}</div></div></div>
-      <div className="board-caption"><div>{activeFilter ? <><Filter size={12}/><span>{filtered.length} of {items.length} items</span><button onClick={reset}>Clear filters<X size={11}/></button></> : <><span className={`caption-dot ${!board?.syncedAt || board?.sync.stale ? 'muted' : ''}`}/><span>{board?.syncedAt ? `Updated ${dateLabel(board.syncedAt, true)}` : board ? 'Not synced yet' : 'Loading board…'}</span>{board?.sync.stale && <span className="stale-label">Update delayed</span>}</>}</div><span>{board?.sync.configured ? board.sync.intervalHours === 1 ? 'Syncs hourly' : `Syncs every ${board.sync.intervalHours} hours` : 'Live sync not connected'}</span></div>
+      <div className="toolbar"><div className="view-toggle" aria-label="Display layout"><button className={view === 'board' ? 'selected' : ''} aria-pressed={view === 'board'} onClick={() => setView('board')}><Columns3 size={15}/>Board</button><button className={view === 'list' ? 'selected' : ''} aria-pressed={view === 'list'} onClick={() => setView('list')}><List size={16}/>List</button></div><div className="filters"><label className="search-box"><Search size={15}/><input ref={searchRef} aria-label="Search work" placeholder="Search work…" value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { if (search) setSearch(''); else event.currentTarget.blur(); } }}/>{search ? <button aria-label="Clear search" onClick={() => setSearch('')}><X size={13}/></button> : <kbd>/</kbd>}</label><label className={`filter-select ${owner !== 'all' ? 'active' : ''}`}><span className="sr-only">Assignee</span><select value={owner} onChange={e => setOwner(e.target.value)}><option value="all">Everyone</option>{owners.map(o => <option key={o} value={o}>{displayName(o)}</option>)}{items.some(i => !i.assignees.length) && <option value="unassigned">Unassigned</option>}</select><ChevronDown size={13}/></label><label className={`filter-select project-filter ${project !== 'all' ? 'active' : ''}`}><span className="sr-only">Project</span><select value={project} onChange={e => setProject(e.target.value)}><option value="all">All projects</option>{projects.map(p => <option key={p}>{p}</option>)}{items.some(i => !i.project) && <option value="none">No project</option>}</select><ChevronDown size={13}/></label><div className="settings-wrap" ref={settingsRef}><button className={`icon-button display-button ${settings ? 'selected' : ''} ${status !== 'all' || showEmpty ? 'active' : ''}`} aria-label="Display options" aria-expanded={settings} onClick={() => setSettings(!settings)}><SlidersHorizontal size={16}/></button>{settings && <div className="display-options"><label><input type="checkbox" checked={showEmpty} onChange={e => setShowEmpty(e.target.checked)}/>Show empty columns</label><label className="status-select">Status<select value={status} onChange={e => setStatus(e.target.value)}><option value="all">All statuses</option>{statuses.map(s => <option key={s}>{s}</option>)}</select></label></div>}</div></div></div>
+      <div className="board-caption"><div>{activeFilter ? <><Filter size={12}/><span>{filtered.length} of {items.length} items</span><button onClick={reset}>Clear filters<X size={11}/></button></> : <><span className={`caption-dot ${!board?.syncedAt || !board?.sync.configured || board?.sync.stale ? 'muted' : ''}`}/><span title={board?.syncedAt ? dateLabel(board.syncedAt, true) : undefined}>{board?.syncedAt ? `Updated ${relativeLabel(board.syncedAt, now)}` : board ? 'Not synced yet' : 'Loading board…'}</span>{board?.sync.stale && <span className="stale-label">Update delayed</span>}</>}</div><span>{board?.sync.configured ? board.sync.intervalHours === 1 ? 'Syncs hourly' : `Syncs every ${board.sync.intervalHours} hours` : 'Live sync not connected'}</span></div>
       {error && <div className="load-error" role="alert">{error}<button onClick={refresh}>Try again</button></div>}
       {!board && !error && <div className="loading-state"><RefreshCw className="spinning" size={18}/>Loading work…</div>}
       {board && !items.length && <div className="no-results"><h2>No work published yet</h2><p>{board.syncedAt ? 'No public items are currently available.' : 'The board will appear after its first sync.'}</p></div>}
       {board && items.length > 0 && !filtered.length && <div className="no-results"><Search size={25}/><h2>No matching work</h2><p>Try a different search or clear your filters.</p><button className="outline-button" onClick={reset}>Clear filters</button></div>}
-      {board && filtered.length > 0 && (view === 'board' ? <div className="board" style={{ '--column-count': columns.length }}>{columns.map(s => <Column key={s} status={s} items={filtered.filter(item => item.status === s)}/>)}</div> : <div className="list-container"><table><thead><tr><th>Work</th><th>Project</th><th>Assigned to</th><th>Status</th></tr></thead><tbody>{[...filtered].sort((a, b) => statuses.indexOf(a.status) - statuses.indexOf(b.status)).map(item => <tr key={item.id}><td>{item.title}</td><td><ProjectTag name={item.project}/></td><td><Owners names={item.assignees}/></td><td><span className="table-status"><span className={`status-dot status-${slug(item.status)}`}/>{item.status}</span></td></tr>)}</tbody></table></div>)}
+      {board && filtered.length > 0 && (view === 'board' ? <div className="board" style={{ '--column-count': columns.length }}>{columns.map(s => <Column key={s} status={s} items={filtered.filter(item => item.status === s)}/>)}</div> : <div className="list-container"><table><thead><tr><th>Work</th><th>Project</th><th>Assigned to</th><th>Status</th></tr></thead><tbody>{[...filtered].sort((a, b) => statuses.indexOf(a.status) - statuses.indexOf(b.status)).map(item => <tr key={item.id} className={item.status === 'Done' ? 'completed-row' : ''}><td>{item.title}</td><td><ProjectTag name={item.project}/></td><td><Owners names={item.assignees}/></td><td><span className="table-status"><span className={`status-dot status-${slug(item.status)}`}/>{item.status}</span></td></tr>)}</tbody></table></div>)}
     </main>
     {syncOpen && <SyncDialog close={() => setSyncOpen(false)} refresh={refresh} automatic={board?.sync.configured} intervalHours={board?.sync.intervalHours}/>}
   </div>;
