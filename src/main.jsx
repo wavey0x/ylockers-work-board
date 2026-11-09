@@ -110,15 +110,18 @@ function BoardSkeleton() {
     </div>)}
   </div>;
 }
+// Every column shows this many cards, and only collapses when that hides at least three.
+const visibleCards = 8;
 function Column({ status, items }) {
   const [expanded, setExpanded] = useState(false);
-  const limit = status === 'Done' && !expanded ? 6 : items.length;
+  const collapsible = items.length > visibleCards + 2;
+  const limit = collapsible && !expanded ? visibleCards : items.length;
   return <section className={`column column-${slug(status)}`} aria-label={`${status}, ${items.length} items`}>
     <div className="column-header"><div><span className={`status-dot status-${slug(status)}`}/><h2>{status}</h2><span className="column-count">{items.length}</span></div>{status === 'Done' && <Check size={14}/>}</div>
     <div className="cards">{items.slice(0, limit).map((item, index) => <Card item={item} index={index} key={item.id}/>)}
       {!items.length && <div className="empty-column"><Circle size={18}/><span>Nothing here for now</span></div>}
     </div>
-    {status === 'Done' && items.length > 6 && <button className={`show-more ${expanded ? 'expanded' : ''}`} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? <span>Show less</span> : <><span className="more-count">+{items.length - limit}</span><span>more completed</span></>}<ChevronDown size={14} className={expanded ? 'rotate' : ''}/></button>}
+    {collapsible && <button className={`show-more ${expanded ? 'expanded' : ''}`} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? <span>Show less</span> : <><span className="more-count">+{items.length - limit}</span><span>{status === 'Done' ? 'more completed' : 'more'}</span></>}<ChevronDown size={14} className={expanded ? 'rotate' : ''}/></button>}
   </section>;
 }
 function App() {

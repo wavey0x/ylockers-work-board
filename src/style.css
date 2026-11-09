@@ -145,7 +145,11 @@ main{padding:8px 28px 40px;flex:1}
 .unassigned{color:var(--faint);font-size:11px}
 .show-more{position:relative;width:100%;display:flex;justify-content:center;align-items:center;gap:8px;margin:10px 0 14px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:linear-gradient(var(--card-top),var(--card-bottom));color:var(--text-2);font-size:12px;font-weight:500;box-shadow:var(--lift),var(--gloss),0 5px 0 -2px var(--surface),0 5px 0 -1px var(--border),0 10px 0 -4px var(--surface),0 10px 0 -3px var(--border-soft);transition:border-color .2s,color .2s,transform .2s}
 .show-more:hover{border-color:var(--border-strong);color:var(--text);transform:translateY(-1px)}
-.more-count{font-size:11px;font-weight:500;padding:1px 7px;border-radius:10px;background:color-mix(in srgb,var(--live) 16%,transparent);color:var(--live);font-variant-numeric:tabular-nums}
+.more-count{--tone:var(--muted);font-size:11px;font-weight:500;padding:1px 7px;border-radius:10px;background:color-mix(in srgb,var(--tone) 16%,transparent);color:var(--tone);font-variant-numeric:tabular-nums}
+.column-ready .more-count{--tone:var(--ready)}
+.column-in-progress .more-count{--tone:var(--progress)}
+.column-blocked .more-count{--tone:var(--blocked)}
+.column-done .more-count{--tone:var(--live)}
 .show-more.expanded{margin:4px 0;box-shadow:none;background:none;border-style:dashed;color:var(--muted);font-weight:450}
 .show-more svg{transition:transform .2s}
 .rotate{transform:rotate(180deg)}
